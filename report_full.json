@@ -1,0 +1,157 @@
+{
+  "moved_files": {
+    "core_files": [
+      "run_with_ngrok.py",
+      "server/__init__.py",
+      "server/server.py",
+      "server/config.py",
+      "server/utils.py",
+      "server/db.py",
+      "server/cache.py",
+      "server/ai/__init__.py",
+      "server/clients/__init__.py",
+      "server/background.py",
+      "server/routes/__init__.py",
+      "backend/check_and_register_webhook.py"
+    ],
+    "support_files": [
+      ".env.example",
+      "requirements.txt",
+      "personas/"
+    ]
+  },
+  "excluded_files": [
+    "ngrok.exe (binary) - Download from https://ngrok.com/download and place in workspace root",
+    ".git (preserve repository history)",
+    "__pycache__ directories",
+    "node_modules",
+    "*.pyc files",
+    "large media files"
+  ],
+  "required_dependencies": {
+    "python_packages": [
+      "uvicorn==0.27.1",
+      "fastapi==0.109.2",
+      "python-dotenv==1.0.1",
+      "requests==2.31.0",
+      "pydantic==2.6.1",
+      "openai==1.12.0",
+      "pymongo==4.6.1",
+      "sentry-sdk[fastapi]",
+      "starlette",
+      "python-multipart",
+      "aioredis"
+    ],
+    "system_binaries": [
+      "ngrok.exe - Download from https://ngrok.com/download"
+    ],
+    "optional_services": [
+      "MongoDB (required if not using mock database)",
+      "Redis (optional, used for caching and rate limiting)"
+    ]
+  },
+  "environment_setup": {
+    "required_env_vars": [
+      "WHATSAPP_ACCESS_TOKEN - WhatsApp Cloud API token",
+      "WHATSAPP_PHONE_NUMBER_ID - Your WhatsApp business account phone number ID",
+      "WEBHOOK_VERIFY_TOKEN - Custom token for webhook verification",
+      "APP_ID - Meta App ID",
+      "APP_SECRET - Meta App Secret",
+      "MONGO_URL - MongoDB connection string (optional if using mock DB)",
+      "REDIS_URL - Redis connection string (optional)",
+      "SENTRY_DSN - Sentry error tracking (optional)",
+      "PORT - Server port (default: 8000)",
+      "ENV - Environment name (development/production)",
+      "DEBUG - Enable debug mode (true/false)",
+      "DISABLE_WHATSAPP_SENDS - Disable actual WhatsApp messages (true/false)",
+      "RATE_LIMIT - API rate limit per minute per IP (optional)"
+    ]
+  },
+  "run_instructions": {
+    "prerequisites": [
+      "1. Python 3.8+ installed",
+      "2. MongoDB installed and running (optional)",
+      "3. Redis installed and running (optional)",
+      "4. ngrok account and authtoken"
+    ],
+    "setup": [
+      "1. Create and activate virtual environment:",
+      "   python -m venv .venv",
+      "   .venv\\Scripts\\activate  # Windows",
+      "   source .venv/bin/activate  # Linux/Mac",
+      "",
+      "2. Install dependencies:",
+      "   pip install -r requirements.txt",
+      "",
+      "3. Download ngrok from https://ngrok.com/download",
+      "   Place ngrok.exe in the workspace root directory",
+      "   Configure ngrok with: ngrok config add-authtoken YOUR_TOKEN",
+      "",
+      "4. Copy .env.example to .env and fill in your credentials:",
+      "   - Get WhatsApp credentials from Meta Developer Console",
+      "   - Set up MongoDB and Redis URLs if using them",
+      "   - Configure other optional settings"
+    ],
+    "run": [
+      "1. Activate virtual environment:",
+      "   .venv\\Scripts\\activate  # Windows",
+      "   source .venv/bin/activate  # Linux/Mac",
+      "",
+      "2. Run the launcher:",
+      "   python run_with_ngrok.py",
+      "",
+      "The launcher will:",
+      "- Start the FastAPI server",
+      "- Start ngrok tunnel",
+      "- Register webhook with WhatsApp",
+      "- Monitor and maintain the connection"
+    ],
+    "testing": [
+      "1. Set DISABLE_WHATSAPP_SENDS=true in .env",
+      "2. Start the server and check http://localhost:8000/health",
+      "3. Send test webhook events using tools/test_webhook.py"
+    ]
+  },
+  "modifications": {
+    "run_with_ngrok.py": [
+      "Updated ROOT and WORKSPACE_ROOT paths to work in new structure",
+      "Added PYTHONPATH setting to ensure imports work",
+      "Added more detailed error messages and setup instructions"
+    ],
+    "server/server.py": [
+      "Updated .env loading path to work in new structure",
+      "Ensured all relative imports are properly configured"
+    ]
+  },
+  "folder_structure": {
+    "whats_app_agent/": {
+      "run_with_ngrok.py": "Main launcher script",
+      ".env.example": "Environment variable template",
+      "requirements.txt": "Python package dependencies",
+      "server/": {
+        "__init__.py": "Server package init",
+        "server.py": "Main FastAPI application",
+        "config.py": "Configuration and settings",
+        "utils.py": "Utility functions",
+        "db.py": "Database management",
+        "cache.py": "Caching layer",
+        "ai/": "AI handler implementation",
+        "clients/": "API clients (WhatsApp, etc)",
+        "routes/": "API route handlers",
+        "background.py": "Background task handlers"
+      },
+      "backend/": {
+        "check_and_register_webhook.py": "Webhook registration script"
+      },
+      "personas/": "AI persona configurations"
+    }
+  },
+  "errors": [],
+  "notes": [
+    "The server supports both development and production modes",
+    "Rate limiting and caching are optional features",
+    "The system can run with mock databases for testing",
+    "All sensitive values should be configured via environment variables",
+    "The webhook registration handles both app-level and phone-number-level subscriptions"
+  ]
+}

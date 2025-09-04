@@ -1,0 +1,196 @@
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+import logging
+import time
+from typing import Callable
+from starlette.middleware.base import BaseHTTPMiddleware
+
+from .utils import setup_logging
+from dotenv import load_dotenv
+from pathlib import Path
+
+# Load environment variables from repository .env (if present)
+load_dotenv(dotenv_path=Path(__file__).parents[2] / ".env")
+
+from .config import config
+from .db import db_manager
+from .cache import cache_manager
+from .ai import AdvancedAIHandler
+from .clients import EnhancedWhatsAppClient
+from .background import register_background_tasks
+from .routes import router as routes_router
+
+# Configure Sentry in production
+if config.ENV == "production" and config.SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=config.SENTRY_DSN,
+        environment=config.ENV,
+        integrations=[FastApiIntegration()],
+        traces_sample_rate=0.2,
+    )
+
+logger = logging.getLogger(__name__)
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app: FastAPI):
+        super().__init__(app)
+        self.cache = cache_manager
+
+    async def dispatch(self, request: Request, call_next: Callable):
+        if config.RATE_LIMIT > 0:
+            client_ip = request.client.host if request.client else "unknown"
+            key = f"rate_limit:{client_ip}:{int(time.time() // 60)}"
+
+            try:
+                count = await self.cache.increment(key)
+            except Exception:
+                # If cache fails, allow the request to proceed (fail-open)
+                return await call_next(request)
+
+            if count > config.RATE_LIMIT:
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "Rate limit exceeded"}
+                )
+
+            await self.cache.expire(key, 60)  # Reset after 1 minute
+
+        return await call_next(request)
+
+def create_app() -> FastAPI:
+    setup_logging()
+    
+    app = FastAPI(
+        title=config.APP_NAME,
+        docs_url="/api/docs" if config.DEBUG else None,
+        redoc_url="/api/redoc" if config.DEBUG else None,
+        openapi_url="/api/openapi.json" if config.DEBUG else None,
+    )
+
+    # Security Middleware
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=config.ALLOWED_HOSTS
+    )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=config.CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    if config.RATE_LIMIT > 0:
+        app.add_middleware(RateLimitMiddleware)
+
+    # Error Handlers
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        return JSONResponse(
+            status_code=422,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": str(exc.detail)},
+        )
+
+    @app.exception_handler(Exception)
+    async def general_exception_handler(request: Request, exc: Exception):
+        import traceback
+        # Log full traceback and some request context for debugging
+        tb = traceback.format_exc()
+        try:
+            body = await request.body()
+            body_preview = body.decode('utf-8', errors='replace')[:2000]
+        except Exception:
+            body_preview = '<unable to read body>'
+
+        logger.error(
+            "Unhandled exception for request %s %s - exc=%s\ntraceback=%s\nbody_preview=%s",
+            request.method,
+            request.url.path,
+            str(exc),
+            tb,
+            body_preview,
+        )
+        logger.debug("Full exception traceback:\n%s", tb)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error"}
+        )
+
+    # Health Check
+    @app.get("/health")
+    async def health_check():
+        return {
+            "status": "healthy",
+            "version": "2.0.0",
+            "env": config.ENV
+        }
+
+    app.include_router(routes_router, prefix="/api")
+
+    @app.on_event("startup")
+    async def startup():
+        try:
+            # Initialize database
+            await db_manager.connect()
+            logger.info("✅ Database connected")
+            
+            # Initialize cache
+            await cache_manager.initialize()
+            logger.info("✅ Cache initialized")
+            
+            # Initialize AI handler
+            app.state.ai = AdvancedAIHandler(config=config)
+            logger.info("✅ AI handler initialized")
+            
+            # Initialize WhatsApp client
+            app.state.whatsapp = EnhancedWhatsAppClient()
+            logger.info("✅ WhatsApp client initialized")
+            
+            # Register background tasks
+            register_background_tasks(app)
+            logger.info("✅ Background tasks registered")
+            
+            logger.info(f"🚀 Application started in {config.ENV} mode")
+        except Exception as e:
+            logger.error(f"❌ Failed to start application: {str(e)}")
+            raise
+
+    @app.on_event("shutdown")
+    async def shutdown():
+        try:
+            await db_manager.close()
+            await cache_manager.close()
+            logger.info("✅ Application shutdown complete")
+        except Exception as e:
+            logger.error(f"❌ Error during shutdown: {str(e)}")
+
+    return app
+
+app = create_app()
+
+if __name__ == "__main__":
+    import uvicorn
+    
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=config.PORT,
+        workers=4 if config.ENV == "production" else 1,
+        proxy_headers=True,
+        forwarded_allow_ips="*",
+        access_log=True,
+    )

@@ -1,0 +1,58 @@
+{
+  "moved_files": [
+    "api_test.py",
+    "auto_register_webhook.py",
+    "check_and_register_webhook.py",
+    "check_sheets_status.py",
+    "check_whatsapp_token.py",
+    "database.py",
+    "db_utils.py",
+    "force_summary.py",
+    "google_sheets_integration.py",
+    "list_models_and_try_model.py",
+    "list_models_via_rest.py",
+    "openrouter_client.py",
+    "openrouter_test.log",
+    "openrouter_test_suite.py",
+    "persona_manager.py",
+    "print_service_account_email.py",
+    "requirements.txt",
+    "server.py",
+    "simulate_gemini_exhaustion.py",
+    "test_openrouter_keys.py",
+    "test_process_message.py",
+    "test_sheets_integration.py",
+    "try_models_until_success.py",
+    "utils.py",
+    "whatsapp_agent.log",
+    "whatsapp_webhook.log",
+    "_call_list_models.py",
+    "_consume_list_models.py",
+    "_inspect_genai.py",
+    ".pytest_cache\\.gitignore",
+    ".pytest_cache\\CACHEDIR.TAG",
+    ".pytest_cache\\README.md",
+    ".pytest_cache\\v\\cache\\lastfailed",
+    ".pytest_cache\\v\\cache\\nodeids",
+    "tests\\test_is_conversation_ending.py",
+    "run_with_ngrok.py"
+  ],
+  "excluded_files": [
+    ".env"
+  ],
+  "modifications": [
+    "Created .env.example (redacted).",
+    "Preserved package layout under whats_app_agent/backend."
+  ],
+  "run_instructions": [
+    "cd whats_app_agent",
+    "python -m venv .venv",
+    "& .venv\\Scripts\\Activate.ps1",
+    "python -m pip install -r backend/requirements.txt",
+    "copy backend\\.env.example backend\\.env and fill secrets (do not paste here).",
+    "place ngrok.exe into whats_app_agent root or ensure ngrok is on PATH",
+    "python run_with_ngrok.py"
+  ],
+  "smoke_test_results": {},
+  "errors": []
+}
