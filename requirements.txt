@@ -26,6 +26,8 @@ python-jose[cryptography]==3.3.0  # JWT tokens
 passlib[bcrypt]==1.7.4  # Password hashing
 sentry-sdk==1.39.1  # Error tracking
 prometheus-fastapi-instrumentator==6.1.0  # Metrics
+orjson==3.10.7  # High-performance JSON serialization
+brotli-asgi==1.4.0  # Optional Brotli compression middleware
 
 # Development Tools
 black==23.11.0  # Code formatting
