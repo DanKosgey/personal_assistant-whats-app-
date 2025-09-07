@@ -5,7 +5,9 @@ from pathlib import Path
 
 # Load .env files in a safe order, with root .env having priority
 # Priority: repo root .env, agent/.env, agent/backend/.env
-ROOT = Path(__file__).parents[3]
+_PARENTS = Path(__file__).resolve().parents
+# Prefer the directory one level above the package (repo root), guard against shallow paths
+ROOT = _PARENTS[1] if len(_PARENTS) > 1 else _PARENTS[0]
 AGENT_DIR = Path(__file__).parents[1]
 
 # First clear any existing values from previous loads
@@ -50,6 +52,7 @@ class AgentConfig:
     MONGO_URL: str = os.getenv("MONGO_URL", "mongodb://localhost:27017")
     MONGO_DB_NAME: str = os.getenv("MONGO_DB_NAME", "whatsapp_agent")
     REDIS_URL: Optional[str] = os.getenv("REDIS_URL")
+    DISABLE_DB: bool = os.getenv("DISABLE_DB", "False").lower() in ("1", "true", "yes")
     
     # AI Settings
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")

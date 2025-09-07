@@ -1,7 +1,11 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import JSONResponse, ORJSONResponse
+from fastapi.responses import JSONResponse
+try:
+    from fastapi.responses import ORJSONResponse as DefaultResponseClass
+except Exception:
+    DefaultResponseClass = JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
 import sentry_sdk
@@ -78,7 +82,7 @@ def create_app() -> FastAPI:
     
     app = FastAPI(
         title=config.APP_NAME,
-        default_response_class=ORJSONResponse,
+        default_response_class=DefaultResponseClass,
         docs_url="/api/docs" if config.DEBUG else None,
         redoc_url="/api/redoc" if config.DEBUG else None,
         openapi_url="/api/openapi.json" if config.DEBUG else None,
@@ -124,14 +128,14 @@ def create_app() -> FastAPI:
     # Error Handlers
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
-        return ORJSONResponse(
+        return DefaultResponseClass(
             status_code=422,
             content={"detail": str(exc)},
         )
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
-        return ORJSONResponse(
+        return DefaultResponseClass(
             status_code=exc.status_code,
             content={"detail": str(exc.detail)},
         )
@@ -156,7 +160,7 @@ def create_app() -> FastAPI:
             body_preview,
         )
         logger.debug("Full exception traceback:\n%s", tb)
-        return ORJSONResponse(
+        return DefaultResponseClass(
             status_code=500,
             content={"detail": "Internal server error"}
         )
@@ -178,9 +182,12 @@ def create_app() -> FastAPI:
             # Shared HTTP client for connection pooling
             import httpx
             app.state.http_client = httpx.AsyncClient(timeout=30.0)
-            # Initialize database
-            await db_manager.connect()
-            logger.info("✅ Database connected")
+            # Initialize database (optional)
+            if not config.DISABLE_DB:
+                await db_manager.connect()
+                logger.info("✅ Database connected")
+            else:
+                logger.info("⏭️ Database disabled by DISABLE_DB flag")
             
             # Initialize cache
             await cache_manager.initialize()
@@ -206,7 +213,8 @@ def create_app() -> FastAPI:
     @app.on_event("shutdown")
     async def shutdown():
         try:
-            await db_manager.close()
+            if not config.DISABLE_DB:
+                await db_manager.close()
             await cache_manager.close()
             try:
                 client = getattr(app.state, "http_client", None)

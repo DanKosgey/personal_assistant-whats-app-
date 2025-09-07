@@ -44,6 +44,12 @@ class AdvancedAIHandler:
             self._force_dev = bool(self.config and getattr(self.config, "DEBUG", False))
         except Exception:
             self._force_dev = False
+        # If DEV_SMOKE, consider AI available so MessageProcessor doesn't early-fail
+        try:
+            if os.getenv("DEV_SMOKE", "0").lower() in ("1", "true", "yes") or self._force_dev:
+                self.ai_available = True
+        except Exception:
+            pass
 
     def _next_gemini_key(self) -> Optional[str]:
         if not self.gemini_keys:
