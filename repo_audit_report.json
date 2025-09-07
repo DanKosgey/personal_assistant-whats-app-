@@ -1,0 +1,116 @@
+{
+  "project_summary": "FastAPI-based WhatsApp AI Agent backend with AI key rotation (Gemini primary, OpenRouter fallback), webhook ingestion, persona switching, MongoDB persistence, optional Redis cache, and production-minded middleware (CORS, trusted hosts, rate limiting, Sentry).",
+  "production_goal": "Run a reliable WhatsApp webhook service that analyzes incoming messages and replies automatically using AI, persists conversations and contacts to MongoDB, optionally leverages Redis for rate-limiting/caching, and operates safely with observability and fallbacks in place.
+",
+  "issues": [
+    {
+      "file": "server/db.py",
+      "line": 86,
+      "issue_type": "indentation_error",
+      "description": "`get_collection` is defined inside `mark_messages_read` due to indentation, so it is not available as a class method in the Motor-backed DatabaseManager path.",
+      "suggested_fix": "Unindent `def get_collection(self, name: str)` (and alias) to the class level so it is a proper method, mirroring the pymongo fallback.",
+      "severity": "high"
+    },
+    {
+      "file": "server/server.py",
+      "line": 19,
+      "issue_type": "config_loading",
+      "description": "Loads .env from `Path(__file__).parents[2]` which resolves to filesystem root for typical layout, likely missing the repo root .env.",
+      "suggested_fix": "Change to `Path(__file__).parents[1] / '.env'` or compute the workspace root robustly (e.g., using git root or env var) before calling load_dotenv.",
+      "severity": "medium"
+    },
+    {
+      "file": "server/cache.py",
+      "line": 35,
+      "issue_type": "cache_expiry_ignored",
+      "description": "In-memory cache stores expiry timestamps but `get()` does not check or purge expired entries; `expire()` also only records timestamps without enforcement.",
+      "suggested_fix": "On `get()`, check `key:expires` and evict when expired; add periodic cleanup or enforce expiry in `increment()` and other accessors.",
+      "severity": "medium"
+    },
+    {
+      "file": "server/background.py",
+      "line": 4,
+      "issue_type": "placeholder_code",
+      "description": "Background task registration is a placeholder only; no tasks are scheduled.",
+      "suggested_fix": "Implement actual recurring tasks (e.g., cleanup, metrics flush, key health checks) or remove the module to avoid confusion.",
+      "severity": "low"
+    },
+    {
+      "file": "server/services/context_manager.py",
+      "line": 1,
+      "issue_type": "empty_module",
+      "description": "Module exists but is empty, suggesting an incomplete refactor.",
+      "suggested_fix": "Either implement the intended context manager or remove the file to reduce dead code.",
+      "severity": "low"
+    },
+    {
+      "file": "server/ai/handler.py",
+      "line": 61,
+      "issue_type": "stub_logic",
+      "description": "`analyze()` returns a static stub result, which limits production usefulness if downstream expects real analysis.",
+      "suggested_fix": "Implement real lightweight analysis or make explicit that `analyze()` is optional and update callers accordingly.",
+      "severity": "low"
+    },
+    {
+      "file": "server/config.py",
+      "line": 55,
+      "issue_type": "env_var_inconsistency",
+      "description": "Config expects `GEMINI_API_KEY` while the AI handler and key manager primarily read `GEMINI_API_KEYS` (comma-separated). This inconsistency can cause misconfiguration.",
+      "suggested_fix": "Support both forms consistently (e.g., parse single `GEMINI_API_KEY` into `GEMINI_API_KEYS` if present) and align README.",
+      "severity": "medium"
+    },
+    {
+      "file": "server/ai/handler.py",
+      "line": 23,
+      "issue_type": "env_var_inconsistency",
+      "description": "Handler reads `GEMINI_API_KEYS` and `OPENROUTER_API_KEYS` but does not use `config.GEMINI_API_KEY`, creating dual sources of truth.",
+      "suggested_fix": "Prefer a single configuration source (config object). If envs are read directly, merge with config values and document precedence.",
+      "severity": "medium"
+    },
+    {
+      "file": "server/routes/webhook.py",
+      "line": 21,
+      "issue_type": "sensitive_logging",
+      "description": "Verification token is partially logged. Even truncated, logging secrets can leak in aggregated logs.",
+      "suggested_fix": "Remove token logging or redact completely; keep only the presence of a token without any substring.",
+      "severity": "low"
+    },
+    {
+      "file": "server/routes/messages.py",
+      "line": 17,
+      "issue_type": "resource_reuse",
+      "description": "Creates new `AdvancedAIHandler` and `EnhancedWhatsAppClient` per request instead of reusing `app.state` instances initialized at startup.",
+      "suggested_fix": "Prefer `request.app.state.ai` and `request.app.state.whatsapp` with fallbacks; this matches the webhook route pattern.",
+      "severity": "low"
+    },
+    {
+      "file": "server/services/persistence.py",
+      "line": 95,
+      "issue_type": "broad_exception_handling",
+      "description": "Multiple `except Exception: pass` blocks swallow errors, making failures silent and hard to diagnose.",
+      "suggested_fix": "Catch specific exceptions and log context; avoid bare `except` and never silently `pass` in production paths.",
+      "severity": "medium"
+    },
+    {
+      "file": "server/clients/whatsapp.py",
+      "line": 41,
+      "issue_type": "stub_behavior_in_prod",
+      "description": "When API URL/token are missing, client returns a stub success which can mask misconfiguration in production.",
+      "suggested_fix": "Guard with an explicit `DISABLE_WHATSAPP_SENDS` flag in config and log a warning/error when running in production mode without real sends.",
+      "severity": "low"
+    }
+  ],
+  "recommendations": [
+    "Fix `server/db.py` Motor path by unindenting `get_collection` to be a class method.",
+    "Correct .env loading path in `server/server.py` to target the repository root.",
+    "Enforce in-memory cache expirations in `server/cache.py` and add periodic cleanup.",
+    "Unify AI key configuration: support `GEMINI_API_KEY` and `GEMINI_API_KEYS` consistently via the central config.",
+    "Replace broad `except Exception: pass` with specific exception handling and structured logging in persistence and scripts.",
+    "Avoid logging secrets/tokens; remove or fully redact sensitive values in webhook logs.",
+    "Reuse app-scoped resources (`app.state.ai`, `app.state.whatsapp`) in all routes for performance/consistency.",
+    "Implement real background tasks (cleanup, metrics, health checks) or remove placeholder module.",
+    "Add unit tests for DatabaseManager (Motor and pymongo paths) and cache expiration behavior.",
+    "Consider adding CI, Dockerfile, and environment validation scripts for production deployments."
+  ]
+}
+
