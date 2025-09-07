@@ -8,7 +8,9 @@
       "issue_type": "config_mutation",
       "description": "Deletes GEMINI_API_KEYS and OPENROUTER_API_KEYS from process environment at import time, potentially breaking externally provided secrets.",
       "suggested_fix": "Do not delete os.environ keys. Rely on load order and explicit overrides. Remove the deletion loop entirely.",
-      "severity": "critical"
+      "severity": "critical",
+      "status": "fixed",
+      "commit": "CONFIGFIX"
     },
     {
       "file": "server/config.py",
@@ -16,7 +18,9 @@
       "issue_type": "validation_mismatch",
       "description": "Production validation requires GEMINI_API_KEY only. If using GEMINI_API_KEYS (comma-separated), validation incorrectly fails.",
       "suggested_fix": "Update validate_production() to accept either a non-empty get_ai_keys() or GEMINI_API_KEY. Prefer config.get_ai_keys().",
-      "severity": "high"
+      "severity": "high",
+      "status": "fixed",
+      "commit": "CONFIGFIX"
     },
     {
       "file": "server/ai/handler.py",
@@ -24,7 +28,9 @@
       "issue_type": "uninitialized_variable",
       "description": "_call_openrouter uses 'data' inside finally without guaranteed initialization. If an exception occurs before assignment, UnboundLocalError will mask the original error.",
       "suggested_fix": "Initialize data = None before try; move response post-processing after the try/except, or guard with if data is not None.",
-      "severity": "critical"
+      "severity": "critical",
+      "status": "fixed",
+      "commit": "AIHANDLER"
     },
     {
       "file": "server/ai/handler.py",
@@ -32,7 +38,9 @@
       "issue_type": "pii_logging",
       "description": "Logs full prompt at info level (potentially PII).",
       "suggested_fix": "Lower to debug and/or truncate/redact content; avoid logging full user input in production.",
-      "severity": "medium"
+      "severity": "medium",
+      "status": "fixed",
+      "commit": "AIHANDLER"
     },
     {
       "file": "server/routes/webhook.py",
@@ -40,7 +48,9 @@
       "issue_type": "pii_logging",
       "description": "Logs entire incoming webhook 'value' object which may include phone numbers and message contents.",
       "suggested_fix": "Log minimal metadata (count, types) and redact identifiers. Avoid dumping full payloads at info level.",
-      "severity": "medium"
+      "severity": "medium",
+      "status": "fixed",
+      "commit": "WEBHOOKLOG"
     },
     {
       "file": "server/server.py",
@@ -48,7 +58,9 @@
       "issue_type": "pii_logging",
       "description": "Exception handler logs request body preview (up to 2000 chars). This can leak PII.",
       "suggested_fix": "Mask phone numbers/emails before logging; truncate more aggressively; restrict to debug in production.",
-      "severity": "medium"
+      "severity": "medium",
+      "status": "fixed",
+      "commit": "SERVERLOG"
     },
     {
       "file": "server/services/persistence.py",
@@ -56,7 +68,9 @@
       "issue_type": "silent_failure",
       "description": "Bare 'except Exception: pass' around cache access hides failures and complicates debugging.",
       "suggested_fix": "Log at debug/warning with context or re-raise a typed error. Use safe fallbacks explicitly.",
-      "severity": "medium"
+      "severity": "medium",
+      "status": "fixed",
+      "commit": "PERSIST"
     },
     {
       "file": "server/services/persistence.py",
@@ -64,7 +78,9 @@
       "issue_type": "silent_failure",
       "description": "Bare 'except Exception: pass' after cache set for contact creation hides errors.",
       "suggested_fix": "At least log once with context (phone_number) and proceed.",
-      "severity": "low"
+      "severity": "low",
+      "status": "fixed",
+      "commit": "PERSIST"
     },
     {
       "file": "server/services/persistence.py",
@@ -72,7 +88,9 @@
       "issue_type": "silent_failure",
       "description": "Bare 'except Exception: return None' in update_contact fallback masks root cause and returns partial state.",
       "suggested_fix": "Log at warning and include minimal reason; consider returning a structured error.",
-      "severity": "medium"
+      "severity": "medium",
+      "status": "fixed",
+      "commit": "PERSIST"
     },
     {
       "file": "server/__init__.py",
@@ -80,7 +98,9 @@
       "issue_type": "unexpected_exports",
       "description": "Wildcard re-export of server_back_up brings in a large, legacy module at import-time, increasing attack surface and import costs.",
       "suggested_fix": "Avoid wildcard export; gate behind a DEBUG/DEV flag or remove from production package exports.",
-      "severity": "high"
+      "severity": "high",
+      "status": "fixed",
+      "commit": "LEGACYGATE"
     },
     {
       "file": "server/background.py",

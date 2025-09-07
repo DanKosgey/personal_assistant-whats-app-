@@ -36,7 +36,10 @@ async def _process_webhook_payload(app, data: dict):
             changes = ent.get("changes", []) or []
             for ch in changes:
                 value = ch.get("value", {}) or {}
-                logger.info("Processing webhook change with value: %s", value)
+                evt_types = list(value.keys())
+                msg_count = len(value.get("messages", []) or [])
+                status_count = len(value.get("statuses", []) or [])
+                logger.info("Processing webhook change (keys=%s, messages=%d, statuses=%d)", evt_types, msg_count, status_count)
                 # If this change contains only delivery/status updates, skip it.
                 if value.get("statuses") and not value.get("messages"):
                     logger.info("Skipping webhook change because it contains only statuses (delivery/read updates)")

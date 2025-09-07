@@ -92,8 +92,9 @@ async def get_or_create_contact(phone_number: str, db_manager: Any, cache_manage
         cached = await cache_manager.get(cache_key)
         if cached:
             return cached
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).debug(f"cache get failed key={cache_key}: {e}")
 
     contacts = db_manager.get_collection('contacts')
     if contacts is None:
@@ -142,8 +143,9 @@ async def get_or_create_contact(phone_number: str, db_manager: Any, cache_manage
 
     try:
         await cache_manager.set(cache_key, new_contact)
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).debug(f"cache set failed key={cache_key}: {e}")
 
     return new_contact
 
@@ -168,7 +170,9 @@ async def update_contact(phone_number: str, updates: Dict, db_manager: Any, cach
         cached.update(updates)
         await cache_manager.set(f"contact:{phone_number}", cached)
         return cached
-    except Exception:
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"cache update failed for contact:{phone_number}: {e}")
         return None
 
 
@@ -179,8 +183,9 @@ async def get_or_create_conversation(phone_number: str, db_manager: Any, cache_m
         cached = await cache_manager.get(cache_key)
         if cached:
             return cached
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).debug(f"cache get failed key={cache_key}: {e}")
 
     conversations = db_manager.get_collection('conversations')
     if conversations is not None:
@@ -224,8 +229,9 @@ async def get_or_create_conversation(phone_number: str, db_manager: Any, cache_m
 
     try:
         await cache_manager.set(cache_key, conversation_id, ttl=14400)
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).debug(f"cache set failed key={cache_key}: {e}")
 
     return conversation_id
 

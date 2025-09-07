@@ -13,10 +13,7 @@ AGENT_DIR = Path(__file__).parents[1]
 
 logger = logging.getLogger(__name__)
 
-# First clear any existing values from previous loads
-for key in ["GEMINI_API_KEYS", "OPENROUTER_API_KEYS"]:
-    if key in os.environ:
-        del os.environ[key]
+# Do not delete existing env vars; respect process-provided secrets
 
 # Now load root .env first with override
 try:
@@ -84,8 +81,14 @@ class AgentConfig:
                 errors.append("WHATSAPP_PHONE_NUMBER_ID must be set")
             if not self.WEBHOOK_VERIFY_TOKEN:
                 errors.append("WEBHOOK_VERIFY_TOKEN must be set")
-            if not self.GEMINI_API_KEY:
-                errors.append("GEMINI_API_KEY must be set")
+            # Accept either single GEMINI_API_KEY or any from get_ai_keys()
+            try:
+                from .config import get_ai_keys  # type: ignore
+                keys = get_ai_keys()
+            except Exception:
+                keys = []
+            if not (self.GEMINI_API_KEY or keys):
+                errors.append("GEMINI_API_KEY or GEMINI_API_KEYS must be set")
             if "*" in self.ALLOWED_HOSTS:
                 errors.append("ALLOWED_HOSTS should be configured in production")
         return errors

@@ -86,7 +86,7 @@ class AdvancedAIHandler:
         return 60  # Default retry delay
 
     async def _call_gemini(self, prompt: str, api_key: str) -> Dict[str, Any]:
-        logger.info("Calling Gemini with prompt: %s", prompt)
+        logger.debug("Calling Gemini with prompt length=%d", len(prompt) if isinstance(prompt, str) else -1)
         try:
             # Import and configure google.generativeai
             import google.generativeai as genai
@@ -134,6 +134,7 @@ class AdvancedAIHandler:
         max_retries = 3
         retry_delay = 1  # Start with 1 second delay
 
+        data = None
         for attempt in range(max_retries):
             try:
                 import httpx
@@ -164,17 +165,16 @@ class AdvancedAIHandler:
                 finally:
                     if _created_here:
                         await client.aclose()
-                    # Try to extract a textual reply from common fields
-                    if isinstance(data, dict):
-                        choices = data.get("choices", [])
-                        if choices and len(choices) > 0:
-                            message = choices[0].get("message", {})
-                            if message and "content" in message:
-                                return {"text": message["content"], "provider": "openrouter"}
 
-                    # If we get here, the response didn't match expected format
-                    logger.warning("Unexpected OpenRouter response format: %s", data)
-                    return {"text": "I apologize, but I received an unexpected response format. Please try again.", "provider": "openrouter"}
+                if isinstance(data, dict):
+                    choices = data.get("choices", [])
+                    if choices and len(choices) > 0:
+                        message = choices[0].get("message", {})
+                        if message and "content" in message:
+                            return {"text": message["content"], "provider": "openrouter"}
+
+                logger.warning("Unexpected OpenRouter response format (keys=%s)", list(data.keys()) if isinstance(data, dict) else type(data))
+                return {"text": "I apologize, but I received an unexpected response format. Please try again.", "provider": "openrouter"}
 
             except (httpx.ConnectError, httpx.ConnectTimeout) as e:
                 last_error = e

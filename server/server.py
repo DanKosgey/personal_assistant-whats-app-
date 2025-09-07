@@ -158,7 +158,12 @@ def create_app() -> FastAPI:
         tb = traceback.format_exc()
         try:
             body = await request.body()
-            body_preview = body.decode('utf-8', errors='replace')[:2000]
+            preview = body.decode('utf-8', errors='replace')[:200]
+            # Simple redaction of phone numbers and emails
+            import re as _re
+            preview = _re.sub(r"\+?\d[\d\s\-()]{6,}\d", "<redacted:phone>", preview)
+            preview = _re.sub(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", "<redacted:email>", preview)
+            body_preview = preview
         except Exception:
             body_preview = '<unable to read body>'
 
