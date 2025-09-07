@@ -116,7 +116,7 @@ class AdvancedAIHandler:
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(None, generate)
             
-            logger.info("Gemini response: %s", response)
+            logger.debug("Gemini response received len=%d", len(response) if isinstance(response, str) else -1)
             return {"text": response, "provider": "gemini"}
             
         except Exception as e:
