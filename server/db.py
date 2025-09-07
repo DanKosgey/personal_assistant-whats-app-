@@ -83,28 +83,28 @@ if _HAS_MOTOR:
             result = await self.db.messages.update_many({"message_id": {"$in": message_ids}}, {"$set": {"read": True}})
             return result.modified_count
 
-            def get_collection(self, name: str):
-                """
-                Compatibility helper used by services/persistence.py and scripts that
-                expect db_manager.get_collection('messages'). Works for Motor or pymongo.
-                """
-                # Attribute-style (Motor often exposes collections as attributes)
-                try:
-                    if hasattr(self.db, name):
-                        col = getattr(self.db, name)
-                        if col is not None:
-                            return col
-                except Exception:
-                    pass
+        def get_collection(self, name: str):
+            """
+            Compatibility helper used by services/persistence.py and scripts that
+            expect db_manager.get_collection('messages'). Works for Motor or pymongo.
+            """
+            # Attribute-style (Motor often exposes collections as attributes)
+            try:
+                if hasattr(self.db, name):
+                    col = getattr(self.db, name)
+                    if col is not None:
+                        return col
+            except Exception:
+                pass
 
-                # Mapping-style (pymongo)
-                try:
-                    return self.db[name]
-                except Exception:
-                    raise AttributeError(f"Database Manager: couldn't find collection '{name}' on db instance {type(self.db)}")
+            # Mapping-style (pymongo)
+            try:
+                return self.db[name]
+            except Exception:
+                raise AttributeError(f"Database Manager: couldn't find collection '{name}' on db instance {type(self.db)}")
 
-            # alias
-            collection = get_collection
+        # alias
+        collection = get_collection
 
 else:
     # Fallback to synchronous pymongo wrapped with asyncio.to_thread

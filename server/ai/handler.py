@@ -21,9 +21,13 @@ class AdvancedAIHandler:
     def __init__(self, config=None, http_client=None):
         self.config = config
         self.http_client = http_client
-        # Load API keys from environment; comma-separated lists supported
-        gemini_raw = os.getenv("GEMINI_API_KEYS", "")
-        self.gemini_keys: List[str] = [k.strip() for k in gemini_raw.split(",") if k.strip()]
+        # Load API keys via config helper (supports single and multi)
+        try:
+            from server.config import get_ai_keys as _get_ai_keys
+            self.gemini_keys: List[str] = list(_get_ai_keys())
+        except Exception:
+            gemini_raw = os.getenv("GEMINI_API_KEYS", "")
+            self.gemini_keys: List[str] = [k.strip() for k in gemini_raw.split(",") if k.strip()]
         oraw = os.getenv("OPENROUTER_API_KEYS", "")
         self.openrouter_keys: List[str] = [k.strip() for k in oraw.split(",") if k.strip()]
         self.enable_openrouter_fallback = os.getenv("ENABLE_OPENROUTER_FALLBACK", "False").lower() in (

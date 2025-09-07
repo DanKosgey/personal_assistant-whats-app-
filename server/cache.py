@@ -33,9 +33,15 @@ class CacheManager:
             logger.info("✅ Redis connection closed")
 
     async def get(self, key: str, default: Any = None) -> Any:
-        """Get value from cache"""
+        """Get value from cache with expiry enforcement for in-memory store."""
         if self._redis:
             return await self._redis.get(key) or default
+        # Enforce expiry for in-memory cache
+        expires_at = self._cache.get(f"{key}:expires")
+        if expires_at is not None and time.time() > float(expires_at):
+            self._cache.pop(key, None)
+            self._cache.pop(f"{key}:expires", None)
+            return default
         return self._cache.get(key, default)
 
     async def set(self, key: str, value: Any, expire: int = None) -> None:

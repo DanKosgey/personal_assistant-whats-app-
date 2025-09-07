@@ -1,5 +1,6 @@
 import os
 from typing import Optional
+import logging
 from dotenv import load_dotenv
 from pathlib import Path
 
@@ -9,6 +10,8 @@ _PARENTS = Path(__file__).resolve().parents
 # Prefer the directory one level above the package (repo root), guard against shallow paths
 ROOT = _PARENTS[1] if len(_PARENTS) > 1 else _PARENTS[0]
 AGENT_DIR = Path(__file__).parents[1]
+
+logger = logging.getLogger(__name__)
 
 # First clear any existing values from previous loads
 for key in ["GEMINI_API_KEYS", "OPENROUTER_API_KEYS"]:
@@ -96,3 +99,29 @@ if config.ENV == "production":
     errors = config.validate_production()
     if errors:
         raise ValueError(f"Production configuration errors: {', '.join(errors)}")
+
+def get_ai_keys() -> list[str]:
+    """Unified AI key accessor.
+
+    Reads GEMINI_API_KEYS (comma-separated) and GEMINI_API_KEY (single),
+    merges, de-duplicates preserving order.
+    """
+    keys: list[str] = []
+    multi = os.getenv("GEMINI_API_KEYS", "")
+    if multi:
+        keys.extend([k.strip() for k in multi.split(",") if k.strip()])
+    single = os.getenv("GEMINI_API_KEY", "")
+    if single:
+        keys.append(single.strip())
+    out: list[str] = []
+    seen = set()
+    for k in keys:
+        if k and k not in seen:
+            seen.add(k)
+            out.append(k)
+    if not out:
+        try:
+            logger.warning("No AI keys configured")
+        except Exception:
+            pass
+    return out

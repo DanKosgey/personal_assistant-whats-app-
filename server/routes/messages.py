@@ -14,8 +14,8 @@ async def post_message(request: Request):
     if not sender or not text:
         raise HTTPException(status_code=400, detail="from and text required")
 
-    ai = AdvancedAIHandler()
-    wa = EnhancedWhatsAppClient()
+    ai = getattr(request.app.state, "ai", None) or AdvancedAIHandler()
+    wa = getattr(request.app.state, "whatsapp", None) or EnhancedWhatsAppClient()
     proc = MessageProcessor(ai=ai, whatsapp=wa)
     result = await proc.process(sender, text)
     return result

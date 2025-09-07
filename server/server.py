@@ -19,9 +19,20 @@ from starlette.middleware.gzip import GZipMiddleware
 from .utils import setup_logging
 from dotenv import load_dotenv
 from pathlib import Path
+import os
 
-# Load environment variables from repository .env (if present)
-load_dotenv(dotenv_path=Path(__file__).parents[2] / ".env")
+# Load environment variables from repo root .env (if present). Allow override via ENV_FILE.
+try:
+    REPO_ROOT = Path(__file__).resolve().parents[1]
+    ENV_PATH = Path(os.getenv("ENV_FILE", REPO_ROOT / ".env"))
+    if ENV_PATH.exists():
+        load_dotenv(dotenv_path=ENV_PATH, override=False)
+    else:
+        # In production it's fine if .env is missing; env vars should be provided.
+        pass
+except Exception:
+    # Do not fail app startup solely due to .env loading issues.
+    pass
 
 from .config import config
 from .db import db_manager

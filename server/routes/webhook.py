@@ -18,7 +18,7 @@ async def webhook_verify(
 ):
     """WhatsApp webhook verification with enhanced logging"""
     logger.info("🔍 Webhook verification requested")
-    logger.info(f"Mode: {hub_mode}, Token: {hub_verify_token[:10]}...")
+    logger.info("Mode: %s, token_present=%s", hub_mode, bool(hub_verify_token))
 
     if hub_mode == "subscribe" and hub_verify_token == config.WEBHOOK_VERIFY_TOKEN:
         logger.info("✅ Webhook verification successful")
