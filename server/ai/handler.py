@@ -18,8 +18,9 @@ class AdvancedAIHandler:
     for local testing and can be extended to perform real API calls.
     """
 
-    def __init__(self, config=None):
+    def __init__(self, config=None, http_client=None):
         self.config = config
+        self.http_client = http_client
         # Load API keys from environment; comma-separated lists supported
         gemini_raw = os.getenv("GEMINI_API_KEYS", "")
         self.gemini_keys: List[str] = [k.strip() for k in gemini_raw.split(",") if k.strip()]
@@ -144,10 +145,15 @@ class AdvancedAIHandler:
                     "max_tokens": 1000
                 }
 
-                async with httpx.AsyncClient(timeout=30.0) as client:  # Increased timeout
+                client = self.http_client or httpx.AsyncClient(timeout=30.0)
+                _created_here = not bool(self.http_client)
+                try:
                     r = await client.post(url, json=payload, headers=headers)
                     r.raise_for_status()
                     data = r.json()
+                finally:
+                    if _created_here:
+                        await client.aclose()
                     # Try to extract a textual reply from common fields
                     if isinstance(data, dict):
                         choices = data.get("choices", [])
