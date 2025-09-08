@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 try:
+    # Use ORJSONResponse only if the optional orjson dependency is actually available
+    import orjson as _orjson  # type: ignore
     from fastapi.responses import ORJSONResponse as DefaultResponseClass
 except Exception:
     DefaultResponseClass = JSONResponse
