@@ -44,8 +44,11 @@ class CacheManager:
             return default
         return self._cache.get(key, default)
 
-    async def set(self, key: str, value: Any, expire: int = None) -> None:
+    async def set(self, key: str, value: Any, expire: int = None, ttl: int = None) -> None:
         """Set value in cache with optional expiration in seconds"""
+        # Backward/forward compatibility: accept ttl alias
+        if ttl is not None and (expire is None or expire <= 0):
+            expire = ttl
         if self._redis:
             if expire:
                 await self._redis.setex(key, expire, value)
