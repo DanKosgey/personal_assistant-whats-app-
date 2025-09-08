@@ -8,8 +8,6 @@ except Exception:
     DefaultResponseClass = JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
-import sentry_sdk
-from sentry_sdk.integrations.fastapi import FastApiIntegration
 import logging
 import time
 from typing import Callable
@@ -27,14 +25,19 @@ from .clients import EnhancedWhatsAppClient
 from .background import register_background_tasks
 from .routes import router as routes_router
 
-# Configure Sentry in production
+# Configure Sentry in production (lazy import to reduce cold start overhead)
 if config.ENV == "production" and config.SENTRY_DSN:
-    sentry_sdk.init(
-        dsn=config.SENTRY_DSN,
-        environment=config.ENV,
-        integrations=[FastApiIntegration()],
-        traces_sample_rate=0.2,
-    )
+    try:
+        import sentry_sdk  # type: ignore
+        from sentry_sdk.integrations.fastapi import FastApiIntegration  # type: ignore
+        sentry_sdk.init(
+            dsn=config.SENTRY_DSN,
+            environment=config.ENV,
+            integrations=[FastApiIntegration()],
+            traces_sample_rate=0.2,
+        )
+    except Exception:
+        pass
 
 logger = logging.getLogger(__name__)
 
@@ -233,6 +236,14 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
+    # Prefer uvloop when available for better performance
+    _loop = None
+    try:
+        import uvloop  # type: ignore
+        uvloop.install()
+        _loop = "uvloop"
+    except Exception:
+        _loop = None
     
     uvicorn.run(
         app,
@@ -242,4 +253,5 @@ if __name__ == "__main__":
         proxy_headers=True,
         forwarded_allow_ips="*",
         access_log=True,
+        loop=_loop or "auto",
     )
