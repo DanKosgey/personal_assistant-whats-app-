@@ -2,21 +2,20 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
+try:
+    from fastapi.responses import ORJSONResponse as DefaultResponseClass
+except Exception:
+    DefaultResponseClass = JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
-import sentry_sdk
-from sentry_sdk.integrations.fastapi import FastApiIntegration
 import logging
 import time
 from typing import Callable
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from .utils import setup_logging
-from dotenv import load_dotenv
 from pathlib import Path
-
-# Load environment variables from repository .env (if present)
-load_dotenv(dotenv_path=Path(__file__).parents[2] / ".env")
 
 from .config import config
 from .db import db_manager
@@ -26,14 +25,19 @@ from .clients import EnhancedWhatsAppClient
 from .background import register_background_tasks
 from .routes import router as routes_router
 
-# Configure Sentry in production
+# Configure Sentry in production (lazy import to reduce cold start overhead)
 if config.ENV == "production" and config.SENTRY_DSN:
-    sentry_sdk.init(
-        dsn=config.SENTRY_DSN,
-        environment=config.ENV,
-        integrations=[FastApiIntegration()],
-        traces_sample_rate=0.2,
-    )
+    try:
+        import sentry_sdk  # type: ignore
+        from sentry_sdk.integrations.fastapi import FastApiIntegration  # type: ignore
+        sentry_sdk.init(
+            dsn=config.SENTRY_DSN,
+            environment=config.ENV,
+            integrations=[FastApiIntegration()],
+            traces_sample_rate=0.2,
+        )
+    except Exception:
+        pass
 
 logger = logging.getLogger(__name__)
 
@@ -63,11 +67,21 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         return await call_next(request)
 
+
+class TimingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next: Callable):
+        start = time.perf_counter()
+        response = await call_next(request)
+        duration_ms = (time.perf_counter() - start) * 1000.0
+        response.headers["X-Process-Time"] = f"{duration_ms:.2f}ms"
+        return response
+
 def create_app() -> FastAPI:
     setup_logging()
     
     app = FastAPI(
         title=config.APP_NAME,
+        default_response_class=DefaultResponseClass,
         docs_url="/api/docs" if config.DEBUG else None,
         redoc_url="/api/redoc" if config.DEBUG else None,
         openapi_url="/api/openapi.json" if config.DEBUG else None,
@@ -90,17 +104,37 @@ def create_app() -> FastAPI:
     if config.RATE_LIMIT > 0:
         app.add_middleware(RateLimitMiddleware)
 
+    # Compression Middleware (GZip always on; Brotli if available)
+    app.add_middleware(GZipMiddleware, minimum_size=500)
+    try:
+        from brotli_asgi import BrotliMiddleware  # type: ignore
+        app.add_middleware(BrotliMiddleware, quality=5)
+    except Exception:
+        # Brotli is optional; proceed if not installed/available
+        pass
+
+    # Lightweight request timing header
+    app.add_middleware(TimingMiddleware)
+
+    # Optional: Prometheus metrics exposure
+    try:
+        if config.ENABLE_METRICS:
+            from prometheus_fastapi_instrumentator import Instrumentator  # type: ignore
+            Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+    except Exception:
+        pass
+
     # Error Handlers
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
-        return JSONResponse(
+        return DefaultResponseClass(
             status_code=422,
             content={"detail": str(exc)},
         )
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
-        return JSONResponse(
+        return DefaultResponseClass(
             status_code=exc.status_code,
             content={"detail": str(exc.detail)},
         )
@@ -112,7 +146,12 @@ def create_app() -> FastAPI:
         tb = traceback.format_exc()
         try:
             body = await request.body()
-            body_preview = body.decode('utf-8', errors='replace')[:2000]
+            preview = body.decode('utf-8', errors='replace')[:200]
+            # Simple redaction of phone numbers and emails
+            import re as _re
+            preview = _re.sub(r"\+?\d[\d\s\-()]{6,}\d", "<redacted:phone>", preview)
+            preview = _re.sub(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", "<redacted:email>", preview)
+            body_preview = preview
         except Exception:
             body_preview = '<unable to read body>'
 
@@ -125,7 +164,7 @@ def create_app() -> FastAPI:
             body_preview,
         )
         logger.debug("Full exception traceback:\n%s", tb)
-        return JSONResponse(
+        return DefaultResponseClass(
             status_code=500,
             content={"detail": "Internal server error"}
         )
@@ -144,20 +183,26 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def startup():
         try:
-            # Initialize database
-            await db_manager.connect()
-            logger.info("✅ Database connected")
+            # Shared HTTP client for connection pooling
+            import httpx
+            app.state.http_client = httpx.AsyncClient(timeout=30.0)
+            # Initialize database (optional)
+            if not config.DISABLE_DB:
+                await db_manager.connect()
+                logger.info("✅ Database connected")
+            else:
+                logger.info("⏭️ Database disabled by DISABLE_DB flag")
             
             # Initialize cache
             await cache_manager.initialize()
             logger.info("✅ Cache initialized")
             
             # Initialize AI handler
-            app.state.ai = AdvancedAIHandler(config=config)
+            app.state.ai = AdvancedAIHandler(config=config, http_client=app.state.http_client)
             logger.info("✅ AI handler initialized")
             
             # Initialize WhatsApp client
-            app.state.whatsapp = EnhancedWhatsAppClient()
+            app.state.whatsapp = EnhancedWhatsAppClient(http_client=app.state.http_client)
             logger.info("✅ WhatsApp client initialized")
             
             # Register background tasks
@@ -172,8 +217,15 @@ def create_app() -> FastAPI:
     @app.on_event("shutdown")
     async def shutdown():
         try:
-            await db_manager.close()
+            if not config.DISABLE_DB:
+                await db_manager.close()
             await cache_manager.close()
+            try:
+                client = getattr(app.state, "http_client", None)
+                if client is not None:
+                    await client.aclose()
+            except Exception:
+                pass
             logger.info("✅ Application shutdown complete")
         except Exception as e:
             logger.error(f"❌ Error during shutdown: {str(e)}")
@@ -184,6 +236,14 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
+    # Prefer uvloop when available for better performance
+    _loop = None
+    try:
+        import uvloop  # type: ignore
+        uvloop.install()
+        _loop = "uvloop"
+    except Exception:
+        _loop = None
     
     uvicorn.run(
         app,
@@ -193,4 +253,5 @@ if __name__ == "__main__":
         proxy_headers=True,
         forwarded_allow_ips="*",
         access_log=True,
+        loop=_loop or "auto",
     )

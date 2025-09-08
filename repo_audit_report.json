@@ -1,0 +1,149 @@
+{
+  "project_summary": "FastAPI-based WhatsApp AI backend. Handles webhook verification and message ingestion, routes through an AI handler (Gemini primary, OpenRouter fallback), persists data to MongoDB via Motor/pymongo, and optionally uses Redis for caching/rate-limiting. Includes persona management and background task stubs.",
+  "production_goal": "Expose stable /api/webhook and related APIs; process and respond to WhatsApp messages with secure, observable, and resilient behavior: pooled HTTP clients, rate-limiting, robust DB/cache lifecycle, no secret logging, and consistent configuration across environments.",
+  "issues": [
+    {
+      "file": "server/config.py",
+      "line": 13,
+      "issue_type": "config_mutation",
+      "description": "Deletes GEMINI_API_KEYS and OPENROUTER_API_KEYS from process environment at import time, potentially breaking externally provided secrets.",
+      "suggested_fix": "Do not delete os.environ keys. Rely on load order and explicit overrides. Remove the deletion loop entirely.",
+      "severity": "critical",
+      "status": "fixed",
+      "commit": "CONFIGFIX"
+    },
+    {
+      "file": "server/config.py",
+      "line": 85,
+      "issue_type": "validation_mismatch",
+      "description": "Production validation requires GEMINI_API_KEY only. If using GEMINI_API_KEYS (comma-separated), validation incorrectly fails.",
+      "suggested_fix": "Update validate_production() to accept either a non-empty get_ai_keys() or GEMINI_API_KEY. Prefer config.get_ai_keys().",
+      "severity": "high",
+      "status": "fixed",
+      "commit": "CONFIGFIX"
+    },
+    {
+      "file": "server/ai/handler.py",
+      "line": 148,
+      "issue_type": "uninitialized_variable",
+      "description": "_call_openrouter uses 'data' inside finally without guaranteed initialization. If an exception occurs before assignment, UnboundLocalError will mask the original error.",
+      "suggested_fix": "Initialize data = None before try; move response post-processing after the try/except, or guard with if data is not None.",
+      "severity": "critical",
+      "status": "fixed",
+      "commit": "AIHANDLER"
+    },
+    {
+      "file": "server/ai/handler.py",
+      "line": 78,
+      "issue_type": "pii_logging",
+      "description": "Logs full prompt at info level (potentially PII).",
+      "suggested_fix": "Lower to debug and/or truncate/redact content; avoid logging full user input in production.",
+      "severity": "medium",
+      "status": "fixed",
+      "commit": "AIHANDLER"
+    },
+    {
+      "file": "server/routes/webhook.py",
+      "line": 39,
+      "issue_type": "pii_logging",
+      "description": "Logs entire incoming webhook 'value' object which may include phone numbers and message contents.",
+      "suggested_fix": "Log minimal metadata (count, types) and redact identifiers. Avoid dumping full payloads at info level.",
+      "severity": "medium",
+      "status": "fixed",
+      "commit": "WEBHOOKLOG"
+    },
+    {
+      "file": "server/server.py",
+      "line": 114,
+      "issue_type": "pii_logging",
+      "description": "Exception handler logs request body preview (up to 2000 chars). This can leak PII.",
+      "suggested_fix": "Mask phone numbers/emails before logging; truncate more aggressively; restrict to debug in production.",
+      "severity": "medium",
+      "status": "fixed",
+      "commit": "SERVERLOG"
+    },
+    {
+      "file": "server/services/persistence.py",
+      "line": 95,
+      "issue_type": "silent_failure",
+      "description": "Bare 'except Exception: pass' around cache access hides failures and complicates debugging.",
+      "suggested_fix": "Log at debug/warning with context or re-raise a typed error. Use safe fallbacks explicitly.",
+      "severity": "medium",
+      "status": "fixed",
+      "commit": "PERSIST"
+    },
+    {
+      "file": "server/services/persistence.py",
+      "line": 146,
+      "issue_type": "silent_failure",
+      "description": "Bare 'except Exception: pass' after cache set for contact creation hides errors.",
+      "suggested_fix": "At least log once with context (phone_number) and proceed.",
+      "severity": "low",
+      "status": "fixed",
+      "commit": "PERSIST"
+    },
+    {
+      "file": "server/services/persistence.py",
+      "line": 170,
+      "issue_type": "silent_failure",
+      "description": "Bare 'except Exception: return None' in update_contact fallback masks root cause and returns partial state.",
+      "suggested_fix": "Log at warning and include minimal reason; consider returning a structured error.",
+      "severity": "medium",
+      "status": "fixed",
+      "commit": "PERSIST"
+    },
+    {
+      "file": "server/__init__.py",
+      "line": 11,
+      "issue_type": "unexpected_exports",
+      "description": "Wildcard re-export of server_back_up brings in a large, legacy module at import-time, increasing attack surface and import costs.",
+      "suggested_fix": "Avoid wildcard export; gate behind a DEBUG/DEV flag or remove from production package exports.",
+      "severity": "high",
+      "status": "fixed",
+      "commit": "LEGACYGATE"
+    },
+    {
+      "file": "server/background.py",
+      "line": 4,
+      "issue_type": "placeholder",
+      "description": "Background registration is a placeholder; optional cleanup task stub is a no-op.",
+      "suggested_fix": "Document as intentional; optionally wire a safe periodic cache cleanup if in-memory cache is used in dev only.",
+      "severity": "low"
+    },
+    {
+      "file": "README.md",
+      "line": 41,
+      "issue_type": "docs_drift",
+      "description": "README references 'agent/whats-app-agent/backend' as the main backend, but active code lives under 'server/'. Confusing for contributors.",
+      "suggested_fix": "Update README to reflect current 'server/' backend as primary; move legacy notes to an archive section.",
+      "severity": "low"
+    },
+    {
+      "file": "requirements.txt",
+      "line": 1,
+      "issue_type": "duplication",
+      "description": "Duplicate requirements at repo root and backend/. Potential version drift.",
+      "suggested_fix": "Consolidate to a single authoritative requirements file or use constraints to avoid drift.",
+      "severity": "low"
+    },
+    {
+      "file": "server/server.py",
+      "line": 20,
+      "issue_type": "env_loading_dup",
+      "description": "Both server/config.py and server/server.py perform .env loading. Risk of confusion and inconsistent precedence.",
+      "suggested_fix": "Centralize .env loading in config.py; in server.py rely solely on config for env.",
+      "severity": "low"
+    }
+  ],
+  "recommendations": [
+    "Remove environment variable deletion in server/config.py; centralize env loading and precedence.",
+    "Fix _call_openrouter 'data' initialization and move post-processing outside finally.",
+    "Harden production validation to use config.get_ai_keys(); accept either single or multi-key.",
+    "Reduce PII logging: truncate or redact prompts, webhook payloads, and request bodies; use debug level where appropriate.",
+    "Replace bare 'except Exception: pass' with targeted exceptions and contextual logging; avoid silent failures in persistence and services.",
+    "Avoid wildcard re-exports from legacy modules in server/__init__.py for production builds.",
+    "Unify requirements files and add a minimal CI (lint, type-check, tests).",
+    "Add tests covering DB manager (Motor and pymongo), cache expiry, config key unification, route resource reuse, and webhook logging redaction.",
+    "Consider Docker packaging with environment-driven configuration and health endpoints for readiness/liveness probes."
+  ]
+}

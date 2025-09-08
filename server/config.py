@@ -1,17 +1,19 @@
 import os
 from typing import Optional
+import logging
 from dotenv import load_dotenv
 from pathlib import Path
 
 # Load .env files in a safe order, with root .env having priority
 # Priority: repo root .env, agent/.env, agent/backend/.env
-ROOT = Path(__file__).parents[3]
+_PARENTS = Path(__file__).resolve().parents
+# Prefer the directory one level above the package (repo root), guard against shallow paths
+ROOT = _PARENTS[1] if len(_PARENTS) > 1 else _PARENTS[0]
 AGENT_DIR = Path(__file__).parents[1]
 
-# First clear any existing values from previous loads
-for key in ["GEMINI_API_KEYS", "OPENROUTER_API_KEYS"]:
-    if key in os.environ:
-        del os.environ[key]
+logger = logging.getLogger(__name__)
+
+# Do not delete existing env vars; respect process-provided secrets
 
 # Now load root .env first with override
 try:
@@ -50,6 +52,7 @@ class AgentConfig:
     MONGO_URL: str = os.getenv("MONGO_URL", "mongodb://localhost:27017")
     MONGO_DB_NAME: str = os.getenv("MONGO_DB_NAME", "whatsapp_agent")
     REDIS_URL: Optional[str] = os.getenv("REDIS_URL")
+    DISABLE_DB: bool = os.getenv("DISABLE_DB", "False").lower() in ("1", "true", "yes")
     
     # AI Settings
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
@@ -78,8 +81,14 @@ class AgentConfig:
                 errors.append("WHATSAPP_PHONE_NUMBER_ID must be set")
             if not self.WEBHOOK_VERIFY_TOKEN:
                 errors.append("WEBHOOK_VERIFY_TOKEN must be set")
-            if not self.GEMINI_API_KEY:
-                errors.append("GEMINI_API_KEY must be set")
+            # Accept either single GEMINI_API_KEY or any from get_ai_keys()
+            try:
+                from .config import get_ai_keys  # type: ignore
+                keys = get_ai_keys()
+            except Exception:
+                keys = []
+            if not (self.GEMINI_API_KEY or keys):
+                errors.append("GEMINI_API_KEY or GEMINI_API_KEYS must be set")
             if "*" in self.ALLOWED_HOSTS:
                 errors.append("ALLOWED_HOSTS should be configured in production")
         return errors
@@ -93,3 +102,29 @@ if config.ENV == "production":
     errors = config.validate_production()
     if errors:
         raise ValueError(f"Production configuration errors: {', '.join(errors)}")
+
+def get_ai_keys() -> list[str]:
+    """Unified AI key accessor.
+
+    Reads GEMINI_API_KEYS (comma-separated) and GEMINI_API_KEY (single),
+    merges, de-duplicates preserving order.
+    """
+    keys: list[str] = []
+    multi = os.getenv("GEMINI_API_KEYS", "")
+    if multi:
+        keys.extend([k.strip() for k in multi.split(",") if k.strip()])
+    single = os.getenv("GEMINI_API_KEY", "")
+    if single:
+        keys.append(single.strip())
+    out: list[str] = []
+    seen = set()
+    for k in keys:
+        if k and k not in seen:
+            seen.add(k)
+            out.append(k)
+    if not out:
+        try:
+            logger.warning("No AI keys configured")
+        except Exception:
+            pass
+    return out

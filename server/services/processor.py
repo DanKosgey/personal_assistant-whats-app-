@@ -18,6 +18,7 @@ import re
 import os
 import asyncio
 from .context import load_context
+from ..prompts import build_agent_instruction_prompt, build_summary_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -43,43 +44,20 @@ class MessageProcessor:
         """Enhance user prompt with office assistant context and conversation history"""
         memory = await self.memory.get_user_memory(sender)
         recent_context = await self.memory.get_recent_context(sender)
-        context_str = self._format_context(recent_context)
-
-        # Get user preferences if any
-        name = memory.preferences.get("name", "")
-        role = memory.preferences.get("role", "")
-        timezone = memory.preferences.get("timezone", "UTC")
-        work_hours = memory.preferences.get("work_hours", "9:00-17:00")
-
-        user_context = ""
-        if name or role:
-            user_context = f"\nUser Information:\n"
-            if name:
-                user_context += f"- Name: {name}\n"
-            if role:
-                user_context += f"- Role: {role}\n"
-            user_context += f"- Timezone: {timezone}\n"
-            user_context += f"- Work Hours: {work_hours}\n"
 
         # Load global assistant/company context for persona-aware prompts
         ctx = load_context()
         assistant_name = ctx.get('assistant_name', 'Secretary')
         company = ctx.get('company_name') or memory.preferences.get('company') or 'Sir Williams - Data Science'
 
-        return f"""As {assistant_name}, the personal secretary for {company}, respond to this message from {sender}: \"{text}\"
-{user_context}
-{context_str}
-        
-Remember to:
-- Be professional yet friendly
-- Provide clear, actionable information
-- Stay focused on administrative and office tasks
-- Maintain conversation context
-- Be proactive with scheduling and organization
-- Use any known user information appropriately
-- Consider user's timezone and work hours when discussing scheduling
-
-Response should reflect your role as the secretary for Sir Williams while being helpful and concise."""
+        return build_agent_instruction_prompt(
+            sender=sender,
+            text=text,
+            assistant_name=assistant_name,
+            company_name=company,
+            user_preferences=memory.preferences,
+            recent_context=recent_context,
+        )
 
     def _is_greeting(self, text: str) -> bool:
         """Check if the message is a greeting"""
@@ -297,12 +275,10 @@ Response should reflect your role as the secretary for Sir Williams while being 
                             f"U: {c['message']}\nA: {c['response']}" for c in recent_ctx[-10:]
                         ]) if recent_ctx else text
 
-                        summarization_prompt = (
-                            "You are an assistant that summarizes WhatsApp conversations for the owner. "
-                            "Given the recent transcript and contact info, produce a short summary (2-3 lines) "
-                            "and 3 concise agenda items or next steps. Format clearly.\n\n"
-                            f"Contact: {contact_info.get('name') or contact_key}, phone: {contact_key}, emails: {', '.join(contact_info.get('emails') or [])}\n\n"
-                            f"Transcript:\n{transcript}\n\nSummary and Agenda:"
+                        summarization_prompt = build_summary_prompt(
+                            contact_display=contact_info.get('name') or contact_key,
+                            contact_phone=contact_key,
+                            transcript=transcript,
                         )
 
                         summary_text = None

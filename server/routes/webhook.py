@@ -18,7 +18,7 @@ async def webhook_verify(
 ):
     """WhatsApp webhook verification with enhanced logging"""
     logger.info("🔍 Webhook verification requested")
-    logger.info(f"Mode: {hub_mode}, Token: {hub_verify_token[:10]}...")
+    logger.info("Mode: %s, token_present=%s", hub_mode, bool(hub_verify_token))
 
     if hub_mode == "subscribe" and hub_verify_token == config.WEBHOOK_VERIFY_TOKEN:
         logger.info("✅ Webhook verification successful")
@@ -36,7 +36,10 @@ async def _process_webhook_payload(app, data: dict):
             changes = ent.get("changes", []) or []
             for ch in changes:
                 value = ch.get("value", {}) or {}
-                logger.info("Processing webhook change with value: %s", value)
+                evt_types = list(value.keys())
+                msg_count = len(value.get("messages", []) or [])
+                status_count = len(value.get("statuses", []) or [])
+                logger.info("Processing webhook change (keys=%s, messages=%d, statuses=%d)", evt_types, msg_count, status_count)
                 # If this change contains only delivery/status updates, skip it.
                 if value.get("statuses") and not value.get("messages"):
                     logger.info("Skipping webhook change because it contains only statuses (delivery/read updates)")

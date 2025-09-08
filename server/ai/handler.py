@@ -18,11 +18,16 @@ class AdvancedAIHandler:
     for local testing and can be extended to perform real API calls.
     """
 
-    def __init__(self, config=None):
+    def __init__(self, config=None, http_client=None):
         self.config = config
-        # Load API keys from environment; comma-separated lists supported
-        gemini_raw = os.getenv("GEMINI_API_KEYS", "")
-        self.gemini_keys: List[str] = [k.strip() for k in gemini_raw.split(",") if k.strip()]
+        self.http_client = http_client
+        # Load API keys via config helper (supports single and multi)
+        try:
+            from server.config import get_ai_keys as _get_ai_keys
+            self.gemini_keys: List[str] = list(_get_ai_keys())
+        except Exception:
+            gemini_raw = os.getenv("GEMINI_API_KEYS", "")
+            self.gemini_keys: List[str] = [k.strip() for k in gemini_raw.split(",") if k.strip()]
         oraw = os.getenv("OPENROUTER_API_KEYS", "")
         self.openrouter_keys: List[str] = [k.strip() for k in oraw.split(",") if k.strip()]
         self.enable_openrouter_fallback = os.getenv("ENABLE_OPENROUTER_FALLBACK", "False").lower() in (
@@ -43,6 +48,12 @@ class AdvancedAIHandler:
             self._force_dev = bool(self.config and getattr(self.config, "DEBUG", False))
         except Exception:
             self._force_dev = False
+        # If DEV_SMOKE, consider AI available so MessageProcessor doesn't early-fail
+        try:
+            if os.getenv("DEV_SMOKE", "0").lower() in ("1", "true", "yes") or self._force_dev:
+                self.ai_available = True
+        except Exception:
+            pass
 
     def _next_gemini_key(self) -> Optional[str]:
         if not self.gemini_keys:
@@ -75,7 +86,7 @@ class AdvancedAIHandler:
         return 60  # Default retry delay
 
     async def _call_gemini(self, prompt: str, api_key: str) -> Dict[str, Any]:
-        logger.info("Calling Gemini with prompt: %s", prompt)
+        logger.debug("Calling Gemini with prompt length=%d", len(prompt) if isinstance(prompt, str) else -1)
         try:
             # Import and configure google.generativeai
             import google.generativeai as genai
@@ -105,7 +116,7 @@ class AdvancedAIHandler:
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(None, generate)
             
-            logger.info("Gemini response: %s", response)
+            logger.debug("Gemini response received len=%d", len(response) if isinstance(response, str) else -1)
             return {"text": response, "provider": "gemini"}
             
         except Exception as e:
@@ -123,6 +134,7 @@ class AdvancedAIHandler:
         max_retries = 3
         retry_delay = 1  # Start with 1 second delay
 
+        data = None
         for attempt in range(max_retries):
             try:
                 import httpx
@@ -144,21 +156,25 @@ class AdvancedAIHandler:
                     "max_tokens": 1000
                 }
 
-                async with httpx.AsyncClient(timeout=30.0) as client:  # Increased timeout
+                client = self.http_client or httpx.AsyncClient(timeout=30.0)
+                _created_here = not bool(self.http_client)
+                try:
                     r = await client.post(url, json=payload, headers=headers)
                     r.raise_for_status()
                     data = r.json()
-                    # Try to extract a textual reply from common fields
-                    if isinstance(data, dict):
-                        choices = data.get("choices", [])
-                        if choices and len(choices) > 0:
-                            message = choices[0].get("message", {})
-                            if message and "content" in message:
-                                return {"text": message["content"], "provider": "openrouter"}
+                finally:
+                    if _created_here:
+                        await client.aclose()
 
-                    # If we get here, the response didn't match expected format
-                    logger.warning("Unexpected OpenRouter response format: %s", data)
-                    return {"text": "I apologize, but I received an unexpected response format. Please try again.", "provider": "openrouter"}
+                if isinstance(data, dict):
+                    choices = data.get("choices", [])
+                    if choices and len(choices) > 0:
+                        message = choices[0].get("message", {})
+                        if message and "content" in message:
+                            return {"text": message["content"], "provider": "openrouter"}
+
+                logger.warning("Unexpected OpenRouter response format (keys=%s)", list(data.keys()) if isinstance(data, dict) else type(data))
+                return {"text": "I apologize, but I received an unexpected response format. Please try again.", "provider": "openrouter"}
 
             except (httpx.ConnectError, httpx.ConnectTimeout) as e:
                 last_error = e

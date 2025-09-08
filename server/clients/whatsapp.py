@@ -18,11 +18,12 @@ class EnhancedWhatsAppClient:
     environment is configured with WHATSAPP_API_URL and WHATSAPP_ACCESS_TOKEN.
     """
 
-    def __init__(self, access_token: Optional[str] = None, api_url: Optional[str] = None):
+    def __init__(self, access_token: Optional[str] = None, api_url: Optional[str] = None, http_client=None):
         self.access_token = access_token or os.getenv("WHATSAPP_ACCESS_TOKEN")
         self.api_url = api_url or os.getenv("WHATSAPP_API_URL")
         # Phone number id used for sending messages: endpoint is {API_BASE}/{PHONE_NUMBER_ID}/messages
         self.phone_number_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+        self.http_client = http_client
         raw_allowed = os.getenv("WHATSAPP_ALLOWED_RECIPIENTS", "")
         # When WHATSAPP_ALLOWED_RECIPIENTS is empty, allow all recipients
         self.allowed: Optional[List[str]] = [s.strip() for s in raw_allowed.split(",") if s.strip()] or None
@@ -46,7 +47,9 @@ class EnhancedWhatsAppClient:
             import httpx
 
             headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            client = self.http_client or httpx.AsyncClient(timeout=10.0)
+            _created_here = not bool(self.http_client)
+            try:
                 resp = await client.post(url, json=payload, headers=headers)
                 try:
                     resp.raise_for_status()
@@ -63,6 +66,9 @@ class EnhancedWhatsAppClient:
                     return resp.json()
                 except Exception:
                     return {"raw": resp.text}
+            finally:
+                if _created_here:
+                    await client.aclose()
         except Exception as e:
             logger.exception("HTTP error posting to WhatsApp API: %s", e)
             raise
