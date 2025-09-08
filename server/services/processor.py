@@ -18,7 +18,14 @@ import re
 import os
 import asyncio
 from .context import load_context
-from ..prompts import build_agent_instruction_prompt, build_summary_prompt
+from ..prompts import (
+    build_agent_instruction_prompt,
+    build_summary_prompt,
+    build_scheduling_prompt,
+    build_information_prompt,
+    build_action_plan_prompt,
+    build_escalation_prompt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +124,52 @@ class MessageProcessor:
 
             # Generate AI response with enhanced prompt
             try:
-                enhanced_prompt = await self._enhance_prompt(sender, text)
+                # Basic intent routing to pick prompt variant
+                lower_text = text.lower()
+                recent_context = await self.memory.get_recent_context(sender)
+                ctx = load_context()
+                assistant_name = ctx.get('assistant_name', 'Secretary')
+                company = ctx.get('company_name') or (await self.memory.get_user_memory(sender)).preferences.get('company') or 'Sir Williams - Data Science'
+
+                if any(k in lower_text for k in ["schedule", "meeting", "appoint", "calendar", "resched"]):
+                    enhanced_prompt = build_scheduling_prompt(
+                        sender=sender,
+                        text=text,
+                        assistant_name=assistant_name,
+                        company_name=company,
+                        user_preferences=(await self.memory.get_user_memory(sender)).preferences,
+                        recent_context=recent_context,
+                    )
+                elif any(k in lower_text for k in ["how", "what", "when", "where", "why"]) and len(text.split()) > 3:
+                    enhanced_prompt = build_information_prompt(
+                        sender=sender,
+                        text=text,
+                        assistant_name=assistant_name,
+                        company_name=company,
+                        knowledge_hints=None,
+                        recent_context=recent_context,
+                    )
+                elif any(k in lower_text for k in ["plan", "steps", "todo", "task", "action"]):
+                    enhanced_prompt = build_action_plan_prompt(
+                        sender=sender,
+                        text=text,
+                        assistant_name=assistant_name,
+                        company_name=company,
+                        recent_context=recent_context,
+                    )
+                elif any(k in lower_text for k in ["escalate", "urgent", "important", "manager", "owner"]):
+                    owner = ctx.get('owner_name') or 'Sir Williams'
+                    enhanced_prompt = build_escalation_prompt(
+                        sender=sender,
+                        text=text,
+                        assistant_name=assistant_name,
+                        owner_name=owner,
+                        reason=None,
+                        recent_context=recent_context,
+                    )
+                else:
+                    enhanced_prompt = await self._enhance_prompt(sender, text)
+
                 gen = await self.ai.generate(enhanced_prompt)
                 logger.info("Generated AI response: %s", gen)
             except Exception as e:
