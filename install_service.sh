@@ -10,6 +10,7 @@ SERVICE_GROUP=${SERVICE_GROUP:-whatsagent}
 ENV_DIR=${ENV_DIR:-/etc/whatsapp-agent}
 PYTHON_BIN=${PYTHON_BIN:-python3}
 PORT=${PORT:-8001}
+ENABLE_NGROK_SERVICE=${ENABLE_NGROK_SERVICE:-1}
 
 if [[ $EUID -ne 0 ]]; then
   echo "Please run as root (sudo)." >&2
@@ -56,6 +57,39 @@ install -m 644 systemd/whatsapp-agent.service /etc/systemd/system/whatsapp-agent
 systemctl daemon-reload
 systemctl enable whatsapp-agent
 systemctl restart whatsapp-agent
+
+# Optionally install ngrok systemd service
+if [[ "$ENABLE_NGROK_SERVICE" == "1" ]]; then
+  # Ensure ngrok binary exists
+  if ! command -v ngrok >/dev/null 2>&1; then
+    echo "Installing ngrok..."
+    ARCH=$(uname -m)
+    URL="https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz"
+    if [[ "$ARCH" != "x86_64" ]]; then
+      echo "Unsupported arch $ARCH for auto-install. Please install ngrok manually." >&2
+    else
+      tmpdir=$(mktemp -d)
+      curl -fsSL "$URL" | tar -xz -C "$tmpdir"
+      install -m 755 "$tmpdir/ngrok" /usr/bin/ngrok
+    fi
+  fi
+
+  # Create default ngrok.yml for authtoken/region (optional)
+  sudo -u "$SERVICE_USER" mkdir -p "/home/$SERVICE_USER/.ngrok2"
+  if [[ -n "${NGROK_AUTHTOKEN:-}" ]]; then
+    cat > "/home/$SERVICE_USER/.ngrok2/ngrok.yml" <<NG
+version: "2"
+authtoken: ${NGROK_AUTHTOKEN}
+region: ${NGROK_REGION:-us}
+NG
+    chown "$SERVICE_USER":"$SERVICE_GROUP" "/home/$SERVICE_USER/.ngrok2/ngrok.yml"
+    chmod 600 "/home/$SERVICE_USER/.ngrok2/ngrok.yml"
+  fi
+
+  install -m 644 systemd/ngrok.service /etc/systemd/system/ngrok.service
+  systemctl daemon-reload
+  systemctl enable --now ngrok.service
+fi
 
 # Firewall (UFW): allow HTTP/HTTPS
 if command -v ufw >/dev/null 2>&1; then

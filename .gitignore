@@ -3,6 +3,7 @@
 .env.*
 venv/
 .venv/
+~/.ngrok2/ngrok.yml
 
 # Python
 __pycache__/

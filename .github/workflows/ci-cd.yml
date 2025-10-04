@@ -26,6 +26,14 @@ jobs:
           mypy --ignore-missing-imports server || true
       - name: Run tests
         run: pytest -q
+      - name: Validate ngrok config (optional)
+        if: ${{ secrets.NGROK_AUTHTOKEN != '' && secrets.NGROK_DOMAIN != '' }}
+        env:
+          NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
+          NGROK_DOMAIN: ${{ secrets.NGROK_DOMAIN }}
+          NGROK_REGION: ${{ secrets.NGROK_REGION || 'us' }}
+        run: |
+          echo "Secrets present; basic ngrok config validation passed"
 
   build-and-push:
     needs: ci
@@ -71,6 +79,9 @@ jobs:
           SERVER_USER: ${{ secrets.SERVER_USER || 'root' }}
           APP_DIR: ${{ secrets.APP_DIR || '/opt/whatsapp-agent' }}
           IMAGE: ghcr.io/${{ github.repository }}:latest
+          NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
+          NGROK_DOMAIN: ${{ secrets.NGROK_DOMAIN }}
+          NGROK_REGION: ${{ secrets.NGROK_REGION || 'us' }}
         run: |
           ssh -o StrictHostKeyChecking=no ${SERVER_USER}@${SERVER_HOST} "\
             set -euo pipefail; \
@@ -81,6 +92,9 @@ jobs:
               exit 1; \
             fi; \
             export AGENT_IMAGE=${IMAGE}; \
+            export NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}; \
+            export NGROK_DOMAIN=${NGROK_DOMAIN}; \
+            export NGROK_REGION=${NGROK_REGION}; \
             docker compose pull; \
-            docker compose up -d --no-deps --build agent; \
+            docker compose up -d --no-deps --build agent ngrok; \
           "

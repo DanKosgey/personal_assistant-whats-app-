@@ -126,15 +126,22 @@ def wait_for_ngrok_public_url(timeout: int = 60):
 
 def run_webhook_registration(ngrok_url: str):
     """Run the existing registration script from backend/."""
-    script = ROOT / "backend" / "check_and_register_webhook.py"
-    if not script.exists():
-        print("Webhook registration script not found:", script)
+    # Prefer server-side registrar if present, else fallback to legacy backend script
+    script = None
+    candidate_server = ROOT / "server" / "check_and_register_webhook.py"
+    candidate_backend = ROOT / "backend" / "check_and_register_webhook.py"
+    if candidate_server.exists():
+        script = candidate_server
+    elif candidate_backend.exists():
+        script = candidate_backend
+    else:
+        print("Webhook registration script not found:", candidate_server, candidate_backend)
         return 1
 
     env = os.environ.copy()
     env["NGROK_PUBLIC_URL"] = ngrok_url
 
-    print("Registering webhook using backend/check_and_register_webhook.py")
+    print("Registering webhook using", script)
     res = subprocess.run([sys.executable, str(script)], cwd=str(script.parent), env=env)
     return res.returncode
 
@@ -153,6 +160,27 @@ def main():
 
     try:
         use_ngrok = os.environ.get("USE_NGROK", "1").lower() in ("1", "true", "yes")
+        env_mode = os.environ.get("ENV", "development").lower()
+        # Enforce ngrok in production
+        if env_mode == "production" and not use_ngrok:
+            print("FATAL: USE_NGROK must be enabled in production. Set USE_NGROK=1 and configure NGROK_AUTHTOKEN and NGROK_DOMAIN.")
+            sys.exit(2)
+
+        # Validate ngrok envs
+        port = os.environ.get("NGROK_PORT") or os.environ.get("PORT", "8001")
+        os.environ.setdefault("NGROK_PORT", str(port))
+        proto = os.environ.get("NGROK_PROTOCOL", "https").lower()
+        region = os.environ.get("NGROK_REGION", "us")
+        domain = os.environ.get("NGROK_DOMAIN")
+        authtoken = os.environ.get("NGROK_AUTHTOKEN")
+
+        if use_ngrok:
+            if env_mode == "production" and not authtoken:
+                print("FATAL: NGROK_AUTHTOKEN is required in production")
+                sys.exit(2)
+            if env_mode == "production" and not domain and os.environ.get("ALLOW_EPHEMERAL_NGROK", "0").lower() not in ("1","true","yes"):
+                print("FATAL: NGROK_DOMAIN is required in production for a stable reserved hostname. Set ALLOW_EPHEMERAL_NGROK=1 only for development.")
+                sys.exit(2)
         if use_ngrok:
             if ngrok_path:
                 ngrok_proc = start_ngrok(ngrok_path)
@@ -165,12 +193,13 @@ def main():
             else:
                 try:
                     from pyngrok import ngrok as _ngrok
-                    port = os.environ.get("PORT", "8001")
+                    port = os.environ.get("NGROK_PORT") or os.environ.get("PORT", "8001")
                     authtoken = os.environ.get("NGROK_AUTHTOKEN")
                     if authtoken:
                         _ngrok.set_auth_token(authtoken)
                     region = os.environ.get("NGROK_REGION")
-                    opts = {"addr": str(port)}
+                    protocol = os.environ.get("NGROK_PROTOCOL", "https").lower()
+                    opts = {"addr": str(port), "proto": protocol}
                     if region:
                         opts["region"] = region
                     domain = os.environ.get("NGROK_DOMAIN")
@@ -187,6 +216,7 @@ def main():
 
         # If we have a public URL, run webhook registration
         if public_url:
+            os.environ["PUBLIC_WEBHOOK_URL"] = public_url.rstrip('/')
             code = run_webhook_registration(public_url)
             if code != 0:
                 print("Webhook registration script exited with code:", code)

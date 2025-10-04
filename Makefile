@@ -6,6 +6,7 @@ PORT ?= 8001
 .PHONY: help
 help:
 	@echo "Targets: build, run, docker-up, docker-down, logs, lint, test, fmt, check"
+	@echo "         start-prod"
 
 .PHONY: build
 build:
@@ -42,3 +43,11 @@ test:
 .PHONY: check
 check:
 	bash ./check_deploy.sh || true
+
+.PHONY: start-prod
+start-prod:
+	@if [ -z "$$NGROK_AUTHTOKEN" ] || [ -z "$$NGROK_DOMAIN" ]; then \
+		echo "NGROK_AUTHTOKEN and NGROK_DOMAIN are required. Export them or set in .env"; \
+		exit 2; \
+	fi
+	docker compose up -d --build

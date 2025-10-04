@@ -69,7 +69,7 @@ example.com {
 }
 ```
 
-### 1.4. Start services
+### 1.4. Start services (agent + ngrok)
 ```bash
 docker compose up -d --build
 # Verify health
@@ -87,10 +87,9 @@ curl -I https://example.com/healthz
 - Update: `docker compose pull && docker compose up -d`
 - Rollback: deploy a previous image tag and `docker compose up -d`
 
-### 1.6. Register webhook URL
-- Preferred: use your domain `https://example.com/api/webhook`
-- Alternative (ngrok paid): use `NGROK_AUTHTOKEN` and `NGROK_DOMAIN` and run the app with `USE_NGROK=1`.
-- For Meta WhatsApp Cloud API: set the callback in your App dashboard or via API. Ensure `WEBHOOK_VERIFY_TOKEN` matches.
+### 1.6. Webhook registration
+- The agent auto-registers the webhook using `server/check_and_register_webhook.py` once the tunnel is up.
+- Provider callback target: `https://${NGROK_DOMAIN}/api/webhook` and verify token `WEBHOOK_VERIFY_TOKEN`.
 
 ---
 
@@ -175,6 +174,8 @@ Required secrets:
 
 ---
 
-## Ngrok in production?
-- Prefer a real domain with TLS via Caddy.
-- If you must use ngrok, use a paid plan with `NGROK_AUTHTOKEN` and `NGROK_DOMAIN` for a stable URL; set `USE_NGROK=1`.
+## Ngrok in production (required by provider)
+- Use a paid ngrok plan with a reserved domain. Set `NGROK_AUTHTOKEN` and `NGROK_DOMAIN` (e.g., `team-name-whatsapp.ngrok.app`).
+- In `.env`, set `USE_NGROK=1`, `NGROK_REGION`, `NGROK_PROTOCOL=https`, `NGROK_PORT=8001`.
+- Compose brings up `ngrok` as a sidecar. The agent reads tunnel details via `NGROK_API_URL=http://ngrok:4040` and sets `PUBLIC_WEBHOOK_URL=https://${NGROK_DOMAIN}`.
+- If you don't have a paid account, you may set `ALLOW_EPHEMERAL_NGROK=1` for development only. You'll get an ephemeral URL and must update your provider webhook manually each restart.

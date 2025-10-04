@@ -11,6 +11,9 @@ services:
     environment:
       - ENV=production
       - PORT=8001
+      - USE_NGROK=1
+      - PUBLIC_WEBHOOK_URL=https://${NGROK_DOMAIN}
+      - NGROK_API_URL=http://ngrok:4040
       - DISABLE_DB=${DISABLE_DB:-1}
     ports:
       - "${PORT:-8001}:8001"
@@ -21,6 +24,7 @@ services:
       retries: 3
       start_period: 20s
     restart: unless-stopped
+    command: ["./entrypoint.sh", "start-with-ngrok"]
 
   proxy:
     image: caddy:2.8
@@ -33,6 +37,22 @@ services:
       - caddy_config:/config
     depends_on:
       - agent
+    restart: unless-stopped
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    command: >-
+      http --authtoken ${NGROK_AUTHTOKEN} --region ${NGROK_REGION:-us} --hostname=${NGROK_DOMAIN} 8001
+    depends_on:
+      - agent
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://ngrok:4040/api/tunnels | rg -q 'public_url' "]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     restart: unless-stopped
 
   # Optional MongoDB (enable by setting profile or editing env DISABLE_DB)
