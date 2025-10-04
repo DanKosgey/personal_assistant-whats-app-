@@ -1,0 +1,28 @@
+[Unit]
+Description=WhatsApp Agent (FastAPI)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=whatsagent
+Group=whatsagent
+WorkingDirectory=/opt/whatsapp-agent
+EnvironmentFile=/etc/whatsapp-agent/env
+# Use a venv created at /opt/whatsapp-agent/.venv
+ExecStart=/bin/bash -lc '/opt/whatsapp-agent/.venv/bin/python -m uvicorn server.server:app --host 0.0.0.0 --port ${PORT} --workers 4 --proxy-headers --forwarded-allow-ips="*"'
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=30
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+AmbientCapabilities=
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

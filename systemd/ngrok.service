@@ -1,0 +1,23 @@
+[Unit]
+Description=ngrok Tunnel for WhatsApp Agent
+After=network-online.target whatsapp-agent.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=whatsagent
+Group=whatsagent
+EnvironmentFile=/etc/whatsapp-agent/env
+ExecStart=/usr/bin/ngrok http --authtoken ${NGROK_AUTHTOKEN} --region ${NGROK_REGION} --hostname=${NGROK_DOMAIN} ${NGROK_PORT}
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
