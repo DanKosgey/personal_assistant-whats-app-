@@ -31,6 +31,8 @@ except Exception:
 class AgentConfig:
     # Application Settings
     APP_NAME: str = os.getenv("APP_NAME", "WhatsApp AI Agent")
+    # Application semantic version; override via CI/CD or env
+    APP_VERSION: str = os.getenv("APP_VERSION", "0.1.0")
     DEBUG: bool = os.getenv("DEBUG", "False").lower() in ("1", "true", "yes")
     ENV: str = os.getenv("ENV", "development")
     PORT: int = int(os.getenv("PORT", "8001"))

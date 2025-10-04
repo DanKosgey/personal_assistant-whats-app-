@@ -10,6 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
 import logging
 import time
+from datetime import datetime, timezone
 from typing import Callable
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
@@ -169,13 +170,29 @@ def create_app() -> FastAPI:
             content={"detail": "Internal server error"}
         )
 
-    # Health Check
-    @app.get("/health")
+    # Health Checks
+    @app.get("/health", include_in_schema=False)
     async def health_check():
         return {
             "status": "healthy",
-            "version": "2.0.0",
-            "env": config.ENV
+            "version": getattr(config, "APP_VERSION", "0.1.0"),
+            "env": config.ENV,
+        }
+
+    @app.get("/healthz", include_in_schema=False)
+    async def healthz():
+        return {"status": "ok"}
+
+    @app.get("/status")
+    async def status():
+        started_at = getattr(app.state, "start_time", time.time())
+        uptime_seconds = max(0, time.time() - started_at)
+        return {
+            "version": getattr(config, "APP_VERSION", "0.1.0"),
+            "env": config.ENV,
+            "uptime_seconds": round(uptime_seconds, 2),
+            "started_at": datetime.fromtimestamp(started_at, tz=timezone.utc).isoformat(),
+            "now": datetime.now(tz=timezone.utc).isoformat(),
         }
 
     app.include_router(routes_router, prefix="/api")
@@ -183,6 +200,8 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def startup():
         try:
+            # Track application start time for status/health
+            app.state.start_time = time.time()
             # Shared HTTP client for connection pooling
             import httpx
             app.state.http_client = httpx.AsyncClient(timeout=30.0)

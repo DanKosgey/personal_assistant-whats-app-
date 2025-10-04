@@ -1,0 +1,36 @@
+# Environments
+.env
+.env.*
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pytest_cache/
+.mypy_cache/
+.pytype/
+
+# Logs
+*.log
+logs/
+backend/*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+
+# Build artifacts
+build/
+dist/
+.eggs/
+*.egg-info/
+
+# Coverage
+.coverage
+htmlcov/

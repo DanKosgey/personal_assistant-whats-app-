@@ -48,7 +48,20 @@ def find_ngrok():
 def start_uvicorn():
     # Start uvicorn as a subprocess using the local python interpreter
     port = os.environ.get("PORT", "8001")
-    cmd = [sys.executable, "-m", "uvicorn", "server.server:app", "--host", "127.0.0.1", "--port", port]
+    host = os.environ.get("HOST", "127.0.0.1")
+    workers = os.environ.get("WORKERS")
+    cmd = [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        "server.server:app",
+        "--host",
+        host,
+        "--port",
+        port,
+    ]
+    if workers:
+        cmd += ["--workers", str(workers)]
     print("Starting uvicorn:", " ".join(cmd))
     env = os.environ.copy()
     # Ensure imports resolve from repo root
@@ -62,10 +75,32 @@ def start_uvicorn():
     return subprocess.Popen(cmd, cwd=str(ROOT), stdout=None, stderr=None, env=env)
 
 
+def _configure_ngrok_auth(ngrok_path: str, authtoken: str):
+    try:
+        cmd = [ngrok_path, "config", "add-authtoken", authtoken]
+        print("Configuring ngrok authtoken...")
+        subprocess.run(cmd, check=True)
+    except Exception as e:
+        print("Warning: unable to configure ngrok authtoken:", e)
+
+
 def start_ngrok(ngrok_path: str):
     # Launch ngrok to forward port from environment
     port = os.environ.get("PORT", "8001")
+    region = os.environ.get("NGROK_REGION")
+    domain = os.environ.get("NGROK_DOMAIN")  # reserved/custom domain (paid)
+    authtoken = os.environ.get("NGROK_AUTHTOKEN")
+
+    if authtoken:
+        _configure_ngrok_auth(ngrok_path, authtoken)
+
     cmd = [ngrok_path, "http", port]
+    if region:
+        # ngrok v3 flag
+        cmd += ["--region", region]
+    if domain:
+        # ngrok v3 reserved domain flag
+        cmd += ["--domain", domain]
     print("Starting ngrok:", " ".join(cmd))
     return subprocess.Popen(cmd, cwd=str(WORKSPACE_ROOT), stdout=None, stderr=None)
 
@@ -117,24 +152,38 @@ def main():
     used_pyngrok = False
 
     try:
-        if ngrok_path:
-            ngrok_proc = start_ngrok(ngrok_path)
-            print("Waiting for ngrok to publish a public URL...")
-            public_url = wait_for_ngrok_public_url(timeout=60)
-            if public_url:
-                print("ngrok public URL:", public_url)
+        use_ngrok = os.environ.get("USE_NGROK", "1").lower() in ("1", "true", "yes")
+        if use_ngrok:
+            if ngrok_path:
+                ngrok_proc = start_ngrok(ngrok_path)
+                print("Waiting for ngrok to publish a public URL...")
+                public_url = wait_for_ngrok_public_url(timeout=60)
+                if public_url:
+                    print("ngrok public URL:", public_url)
+                else:
+                    print("ngrok did not publish a public HTTPS URL within timeout")
             else:
-                print("ngrok did not publish a public HTTPS URL within timeout")
+                try:
+                    from pyngrok import ngrok as _ngrok
+                    port = os.environ.get("PORT", "8001")
+                    authtoken = os.environ.get("NGROK_AUTHTOKEN")
+                    if authtoken:
+                        _ngrok.set_auth_token(authtoken)
+                    region = os.environ.get("NGROK_REGION")
+                    opts = {"addr": str(port)}
+                    if region:
+                        opts["region"] = region
+                    domain = os.environ.get("NGROK_DOMAIN")
+                    if domain:
+                        opts["domain"] = domain
+                    print(f"Starting pyngrok tunnel on port {port}...")
+                    public_url = str(_ngrok.connect(**opts))
+                    used_pyngrok = True
+                    print("ngrok public URL:", public_url)
+                except Exception as e:
+                    print("pyngrok fallback failed:", e)
         else:
-            try:
-                from pyngrok import ngrok as _ngrok
-                port = os.environ.get("PORT", "8001")
-                print(f"Starting pyngrok tunnel on port {port}...")
-                public_url = str(_ngrok.connect(str(port)))
-                used_pyngrok = True
-                print("ngrok public URL:", public_url)
-            except Exception as e:
-                print("pyngrok fallback failed:", e)
+            print("USE_NGROK is disabled; skipping tunnel startup")
 
         # If we have a public URL, run webhook registration
         if public_url:

@@ -1,0 +1,15 @@
+{
+    email you@example.com
+}
+
+# Replace example.com with your domain
+example.com {
+    encode zstd gzip
+    reverse_proxy agent:8001
+}
+
+# Local HTTP fallback (optional)
+:80 {
+    encode zstd gzip
+    reverse_proxy agent:8001
+}
